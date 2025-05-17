@@ -1,0 +1,273 @@
+#ifndef EMPLOYEE_H
+#define EMPLOYEE_H
+
+#include <string>
+
+class Employee {
+public:
+    Employee(const std::string& id, const std::string& name, double salary);
+    std::string getId() const;
+    std::string getName() const;
+    double getSalary() const;
+    void setSalary(double newSalary);
+
+private:
+    std::string id;
+    std::string name;
+    double salary;
+};
+
+#endif
+
+
+
+#include "employee.h"
+
+Employee::Employee(const std::string& id, const std::string& name, double salary)
+    : id(id), name(name), salary(salary) {}
+
+std::string Employee::getId() const {
+    return id;
+}
+
+std::string Employee::getName() const {
+    return name;
+}
+
+double Employee::getSalary() const {
+    return salary;
+}
+
+void Employee::setSalary(double newSalary) {
+    salary = newSalary;
+}
+
+
+#ifndef EMPLOYEEMANAGER_H
+#define EMPLOYEEMANAGER_H
+
+#include <vector>
+#include "employee.h"
+
+class EmployeeManager {
+public:
+    EmployeeManager(const std::string& filePath);
+    bool loadEmployeesFromFile();
+    bool saveEmployeesToFile();
+    Employee* findEmployeeById(const std::string& id);
+    bool addEmployee(const Employee& employee);
+    bool updateEmployee(const std::string& id, const Employee& newEmployee);
+    bool deleteEmployee(const std::string& id);
+
+private:
+    std::vector<Employee> employees;
+    std::string filePath;
+};
+
+#endif
+
+
+#include "employeemanager.h"
+#include <fstream>
+#include <sstream>
+
+EmployeeManager::EmployeeManager(const std::string& filePath) : filePath(filePath) {}
+
+bool EmployeeManager::loadEmployeesFromFile() {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        return false;
+    }
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string id, name;
+        double salary;
+        if (iss >> id >> name >> salary) {
+            employees.emplace_back(id, name, salary);
+        }
+    }
+    file.close();
+    return true;
+}
+
+bool EmployeeManager::saveEmployeesToFile() {
+    std::ofstream file(filePath);
+    if (!file.is_open()) {
+        return false;
+    }
+    for (const auto& employee : employees) {
+        file << employee.getId() << " " << employee.getName() << " "
+             << employee.getSalary() << std::endl;
+    }
+    file.close();
+    return true;
+}
+
+Employee* EmployeeManager::findEmployeeById(const std::string& id) {
+    for (auto& employee : employees) {
+        if (employee.getId() == id) {
+            return &employee;
+        }
+    }
+    return nullptr;
+}
+
+bool EmployeeManager::addEmployee(const Employee& employee) {
+    employees.push_back(employee);
+    return saveEmployeesToFile();
+}
+
+bool EmployeeManager::updateEmployee(const std::string& id, const Employee& newEmployee) {
+    for (auto& employee : employees) {
+        if (employee.getId() == id) {
+            employee = newEmployee;
+            return saveEmployeesToFile();
+        }
+    }
+    return false;
+}
+
+bool EmployeeManager::deleteEmployee(const std::string& id) {
+    for (auto it = employees.begin(); it != employees.end(); ++it) {
+        if (it->getId() == id) {
+            employees.erase(it);
+            return saveEmployeesToFile();
+        }
+    }
+    return false;
+}
+
+
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include "employeemanager.h"
+
+namespace Ui {
+class MainWindow;
+}
+
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
+
+private slots:
+    void on_queryButton_clicked();
+    void on_addButton_clicked();
+    void on_updateButton_clicked();
+    void on_deleteButton_clicked();
+    void validateInput();
+
+private:
+    Ui::MainWindow *ui;
+    EmployeeManager* manager;
+};
+
+#endif
+
+
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include <QMessageBox>
+#include <QRegularExpression>
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow) {
+    ui->setupUi(this);
+    manager = new EmployeeManager("employees.txt");
+    if (!manager->loadEmployeesFromFile()) {
+        QMessageBox::critical(this, "错误", "无法读取员工信息文件！");
+    }
+    connect(ui->idInput, &QLineEdit::textChanged, this, &MainWindow::validateInput);
+    connect(ui->nameInput, &QLineEdit::textChanged, this, &MainWindow::validateInput);
+    connect(ui->salaryInput, &QLineEdit::textChanged, this, &MainWindow::validateInput);
+}
+
+MainWindow::~MainWindow() {
+    delete ui;
+    delete manager;
+}
+
+void MainWindow::on_queryButton_clicked() {
+    std::string id = ui->idInput->text().toStdString();
+    Employee* employee = manager->findEmployeeById(id);
+    if (employee) {
+        ui->salaryOutput->setText(QString::number(employee->getSalary()));
+    } else {
+        QMessageBox::warning(this, "警告", "未找到该员工！");
+        ui->salaryOutput->clear();
+    }
+}
+
+void MainWindow::on_addButton_clicked() {
+    std::string id = ui->idInput->text().toStdString();
+    std::string name = ui->nameInput->text().toStdString();
+    bool ok;
+    double salary = ui->salaryInput->text().toDouble(&ok);
+    if (!ok) {
+        QMessageBox::warning(this, "警告", "工资输入格式错误！");
+        return;
+    }
+    Employee newEmployee(id, name, salary);
+    if (manager->addEmployee(newEmployee)) {
+        QMessageBox::information(this, "提示", "员工添加成功！");
+    } else {
+        QMessageBox::critical(this, "错误", "员工添加失败！");
+    }
+}
+
+void MainWindow::on_updateButton_clicked() {
+    std::string id = ui->idInput->text().toStdString();
+    std::string name = ui->nameInput->text().toStdString();
+    bool ok;
+    double salary = ui->salaryInput->text().toDouble(&ok);
+    if (!ok) {
+        QMessageBox::warning(this, "警告", "工资输入格式错误！");
+        return;
+    }
+    Employee newEmployee(id, name, salary);
+    if (manager->updateEmployee(id, newEmployee)) {
+        QMessageBox::information(this, "提示", "员工信息更新成功！");
+    } else {
+        QMessageBox::critical(this, "错误", "员工信息更新失败！");
+    }
+}
+
+void MainWindow::on_deleteButton_clicked() {
+    std::string id = ui->idInput->text().toStdString();
+    if (manager->deleteEmployee(id)) {
+        QMessageBox::information(this, "提示", "员工删除成功！");
+    } else {
+        QMessageBox::critical(this, "错误", "员工删除失败！");
+    }
+}
+
+void MainWindow::validateInput() {
+    QRegularExpression idRegex("[0 - 9]{3}");
+    QRegularExpression nameRegex("[a-zA - Z]{2,20}");
+    QRegularExpression salaryRegex("^[0 - 9]+(\\.[0 - 9]{1,2})?$");
+    bool idValid = ui->idInput->text().contains(idRegex);
+    bool nameValid = ui->nameInput->text().contains(nameRegex);
+    bool salaryValid = ui->salaryInput->text().contains(salaryRegex);
+    ui->addButton->setEnabled(idValid && nameValid && salaryValid);
+    ui->updateButton->setEnabled(idValid && nameValid && salaryValid);
+}
+
+
+#include <QApplication>
+#include "mainwindow.h"
+
+int main(int argc, char *argv[]) {
+    QApplication a(argc, argv);
+    MainWindow w;
+    w.show();
+    return a.exec();
+}
+
+
